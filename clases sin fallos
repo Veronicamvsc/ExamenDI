@@ -1,0 +1,221 @@
+// MyStoreAppApp.swift
+// Punto de entrada de la app
+
+import SwiftUI
+
+@main
+struct MyStoreAppApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+
+
+
+// Models/Product.swift
+// Modelo de Producto
+
+import Foundation
+
+struct Product: Identifiable, Codable {
+    let id: Int
+    let title: String
+    let price: Double
+    let description: String
+    let category: String
+    let image: String
+}
+
+
+// Services/APIService.swift
+// Servicio para consumir la API
+
+import Foundation
+
+class APIService {
+    static let shared = APIService()
+    private init() {}
+    
+    func fetchProducts(category: String, completion: @escaping (Result<[Product], Error>) -> Void) {
+        let baseURL = "https://fakestoreapi.com/products/category/"
+        
+        // Solucionamos el problema del apóstrofe en la URL
+        guard let encodedCategory = category.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: baseURL + encodedCategory) else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let data = data else { return }
+            do {
+                let products = try JSONDecoder().decode([Product].self, from: data)
+                completion(.success(products))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+}
+
+
+// ViewModels/ProductViewModel.swift
+// ViewModel para manejar los productos
+
+import Foundation
+
+class ProductViewModel: ObservableObject {
+    @Published var products: [Product] = []
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String? = nil
+
+    func loadProducts(category: String, completion: @escaping (Result<[Product], Error>) -> Void) {
+        isLoading = true  
+        errorMessage = nil  
+        
+        APIService.shared.fetchProducts(category: category) { result in
+            DispatchQueue.main.async {
+                self.isLoading = false  
+                switch result {
+                case .success(let products):
+                    self.products = products
+                    completion(.success(products))
+                case .failure(let error):
+                    self.errorMessage = "Error al cargar productos: \(error.localizedDescription)"
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+}
+
+
+// Views/ContentView.swift
+// Vista principal con un menú de categorías
+
+import SwiftUI
+
+struct ContentView: View {
+    @State private var selectedCategory: String = "electronics"
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                Picker("Selecciona una categoría", selection: $selectedCategory) {
+                    Text("Electrónica").tag("electronics")
+                    Text("Joyería").tag("jewelery")
+                    Text("Hombre").tag("men's clothing")
+                    Text("Mujer").tag("women's clothing")
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                
+                ProductListView(category: selectedCategory)
+            }
+            .navigationTitle("Tienda Online")
+        }
+    }
+}
+
+
+
+// Views/ProductListView.swift
+// Vista de lista de productos
+
+
+import SwiftUI
+
+struct ProductListView: View {
+    @StateObject private var viewModel = ProductViewModel()
+    let category: String
+    
+    var body: some View {
+        VStack {
+            if viewModel.isLoading {
+                ProgressView("Cargando productos...")  
+                    .padding()
+            } else if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)  
+                    .foregroundColor(.red)
+                    .padding()
+            } else if viewModel.products.isEmpty {
+                Text("No hay productos disponibles")  
+                    .foregroundColor(.gray)
+                    .padding()
+            } else {
+                List(viewModel.products) { product in
+                    NavigationLink(destination: ProductDetailView(product: product)) {
+                        HStack {
+                            AsyncImage(url: URL(string: product.image)) { image in
+                                image.resizable().scaledToFit()
+                            } placeholder: {
+                                ProgressView()
+                            }
+                            .frame(width: 50, height: 50)
+                            
+                            VStack(alignment: .leading) {
+                                Text(product.title).font(.headline)
+                                Text("$\(product.price, specifier: "%.2f")").font(.subheadline)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear {
+            viewModel.loadProducts(category: category) { result in
+                switch result {
+                case .success(let products):
+                    viewModel.products = products
+                case .failure(let error):
+                    viewModel.errorMessage = "Error al cargar productos: \(error.localizedDescription)"
+                }
+            }
+        }
+        .onChange(of: category) { newCategory in
+            viewModel.products = []  // ⚡ Limpia la lista antes de cargar nuevos datos
+            viewModel.loadProducts(category: newCategory) { result in
+                switch result {
+                case .success(let products):
+                    viewModel.products = products
+                case .failure(let error):
+                    viewModel.errorMessage = "Error al cargar productos: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+}
+
+
+// Views/ProductDetailView.swift
+// Vista de detalle del producto
+
+
+import SwiftUI
+
+struct ProductDetailView: View {
+    let product: Product
+    
+    var body: some View {
+        VStack {
+            AsyncImage(url: URL(string: product.image)) { image in
+                image.resizable().scaledToFit()
+            } placeholder: {
+                ProgressView()
+            }
+            .frame(height: 200)
+            
+            Text(product.title).font(.title).bold()
+            Text("$\(product.price, specifier: "%.2f")").font(.title2)
+            Text(product.description).padding()
+        }
+        .navigationTitle("Detalle del Producto")
+    }
+}
+
