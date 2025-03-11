@@ -1,0 +1,13 @@
+MyStoreApp/
+│── MyStoreAppApp.swift
+│── Assets.xcassets/
+│── Views/
+│   ├── ContentView.swift
+│   ├── ProductListView.swift
+│   ├── ProductDetailView.swift
+│── ViewModels/
+│   ├── ProductViewModel.swift
+│── Models/
+│   ├── Product.swift
+│── Services/
+│   ├── APIService.swift
